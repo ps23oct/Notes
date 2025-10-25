@@ -1,0 +1,134 @@
+﻿@using Notes.Domain.Notes
+@model List<Notes.Domain.Notes.Note>
+
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+
+<div class="grid">
+    <section class="card">
+        <h2>Create a note</h2>
+        <form asp-action="Create" method="post">
+            <div>
+                <label>Title</label>
+                <input type="text" name="Title" maxlength="120" required />
+                <span class="text-danger"></span>
+            </div>
+            <div style="margin-top:8px;">
+                <label>Content</label>
+                <textarea name="Content" rows="4" maxlength="4000"></textarea>
+            </div>
+            <div style="margin-top:8px;">
+                <label>Priority</label>
+                <select name="Priority">
+                    <option value="@Priority.Low">Low</option>
+                    <option value="@Priority.Medium" selected>Medium</option>
+                    <option value="@Priority.High">High</option>
+                </select>
+            </div>
+            <div style="margin-top:12px;">
+                <button type="submit" class="btn primary">Add Note</button>
+            </div>
+            @Html.AntiForgeryToken()
+        </form>
+        <p><small class="muted">Notes are displayed newest-first. Click a note to edit inline.</small></p>
+    </section>
+
+    <section>
+        <h2 style="margin:0 0 10px;">Your notes</h2>
+        <div id="notes" class="notes-grid">
+            @foreach (var n in Model)
+            {
+                var cls = n.Priority switch
+                {
+                    Priority.High => "note high",
+                    Priority.Low => "note low",
+                    _ => "note medium"
+                };
+                <article class="@cls" data-id="@n.Id">
+                    <input class="title" type="text" value="@n.Title" />
+                    <textarea class="content" rows="5">@n.Content</textarea>
+                    <div class="row" style="margin-top:6px;">
+                        <label>Priority</label>
+                        <select class="priority">
+                            <option value="@Priority.Low" selected="@(n.Priority == Priority.Low)">@Priority.Low</option>
+                            <option value="@Priority.Medium" selected="@(n.Priority == Priority.Medium)">@Priority.Medium</option>
+                            <option value="@Priority.High" selected="@(n.Priority == Priority.High)">@Priority.High</option>
+                        </select>
+                    </div>
+                    <div class="toolbar">
+                        <button class="btn primary save">Save</button>
+                        <button class="btn ghost delete">Delete</button>
+                        <small class="muted">Created @n.CreatedUtc.ToLocalTime().ToString("g")</small>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+</div>
+
+@{
+    var antiForgeryToken = Antiforgery.GetAndStoreTokens(Context).RequestToken;
+}
+
+@section Scripts {
+    <script>
+        (function(){
+          const token = '@antiForgeryToken';
+
+          // Reapply color coding on priority change
+          function updateColor(noteEl){
+            noteEl.classList.remove('low','medium','high');
+            const pr = noteEl.querySelector('.priority').value;
+            noteEl.classList.add(pr.toLowerCase());
+          }
+
+          document.querySelectorAll('.note').forEach(n => {
+            n.querySelector('.priority').addEventListener('change', () => updateColor(n));
+          });
+
+          document.getElementById('notes').addEventListener('click', async (e) => {
+            const noteEl = e.target.closest('.note');
+            if(!noteEl) return;
+
+            // Save
+            if(e.target.classList.contains('save')){
+              const id = noteEl.dataset.id;
+              const title = noteEl.querySelector('.title').value;
+              const content = noteEl.querySelector('.content').value;
+              const priority = noteEl.querySelector('.priority').value;
+
+              const form = new FormData();
+              form.append('id', id);
+              form.append('title', title);
+              form.append('content', content);
+              form.append('priority', priority);
+              form.append('__RequestVerificationToken', token);
+
+              const res = await fetch('@Url.Action("Edit", "Notes")', { method:'PATCH', body:form });
+              if(res.ok){
+                updateColor(noteEl);
+                noteEl.style.outline='2px solid #9ae6b4';
+                setTimeout(()=>noteEl.style.outline='none',800);
+              }else{
+                alert('Failed to save. Make sure Title is not empty and under 120 characters.');
+              }
+            }
+
+            // Delete
+            if(e.target.classList.contains('delete')){
+              if(!confirm('Delete this note?')) return;
+              const id = noteEl.dataset.id;
+              const form = new FormData();
+              form.append('id', id);
+              form.append('__RequestVerificationToken', token);
+
+              const res = await fetch('@Url.Action("Delete", "Notes")', { method:'DELETE', body:form });
+              if(res.ok){
+                noteEl.remove();
+              }else{
+                alert('Failed to delete.');
+              }
+            }
+          });
+        })();
+    </script>
+}
